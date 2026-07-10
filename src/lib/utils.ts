@@ -64,15 +64,16 @@ export function debugLog(message: string, ...args: any[]) {
     // Log to console
     console.error(formattedMessage, ...args)
 
-    // Ensure config directory exists
+    // Ensure config directory exists (owner-only — issue #2)
     const configDir = getConfigDir()
-    fs.mkdirSync(configDir, { recursive: true })
+    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 })
 
-    // Append to log file
+    // Append to log file. mode 0o600 so the debug log (which can contain auth
+    // server URLs, scopes and stack traces) is not world-readable (issue #1).
     const logPath = path.join(configDir, `${serverUrlHash}_debug.log`)
     const logMessage = `${formattedMessage} ${args.map((arg) => (typeof arg === 'object' ? JSON.stringify(arg) : String(arg))).join(' ')}\n`
 
-    fs.appendFileSync(logPath, logMessage, { encoding: 'utf8' })
+    fs.appendFileSync(logPath, logMessage, { encoding: 'utf8', mode: 0o600 })
   } catch (error) {
     // Fallback to console if file logging fails
     console.error(`[DEBUG LOG ERROR] ${error}`)
@@ -357,6 +358,21 @@ export async function discoverOAuthServerInfo(
     debugLog('No Protected Resource Metadata found, falling back to server URL as authorization server')
   }
 
+  // Warn if the discovered authorization server is on a different origin than the
+  // MCP server the user asked for (issue #8): this is legitimate for split-domain
+  // IdPs (Google/Okta/Entra), but a malicious server could redirect the OAuth flow
+  // to an attacker-controlled authorization server, so make it visible.
+  try {
+    if (new URL(authorizationServerUrl).origin !== new URL(serverUrl).origin) {
+      log(
+        `Warning: authorization server ${new URL(authorizationServerUrl).origin} is on a different origin than the MCP server ${new URL(serverUrl).origin}. ` +
+          `Proceed only if you trust this authorization server.`,
+      )
+    }
+  } catch {
+    // ignore URL parse issues here; downstream validation handles bad URLs
+  }
+
   // Step 4: Fetch Authorization Server Metadata
   const authorizationServerMetadata = await fetchAuthorizationServerMetadata(authorizationServerUrl)
 
@@ -580,6 +596,11 @@ export function setupOAuthCallbackServerWithLongPoll(options: OAuthCallbackServe
 
   // Long-polling endpoint
   app.get('/wait-for-auth', (req, res) => {
+    // Echo the per-instance secret so polling peers can confirm they're talking
+    // to the genuine primary and not a recycled port / planted lockfile (issue #6)
+    if (options.authSecret) {
+      res.setHeader('X-MCP-Auth-Secret', options.authSecret)
+    }
     if (authCode) {
       // Auth already completed - just return 200 without the actual code
       // Secondary instances will read tokens from disk
@@ -624,6 +645,18 @@ export function setupOAuthCallbackServerWithLongPoll(options: OAuthCallbackServe
     if (!code) {
       res.status(400).send('Error: No authorization code received')
       return
+    }
+
+    // CSRF defense (issue #5, RFC 9700 §2.1): if we generated a `state` nonce,
+    // the callback must carry it back unchanged. This blocks a local process (or
+    // a page that guessed the port) from injecting an authorization code.
+    if (options.expectedState) {
+      const state = req.query.state as string | undefined
+      if (state !== options.expectedState) {
+        log('Rejecting OAuth callback: state parameter missing or mismatched')
+        res.status(400).send('Error: invalid state parameter')
+        return
+      }
     }
 
     authCode = code
@@ -734,6 +767,19 @@ export async function findAvailablePort(preferredPort?: number): Promise<number>
  * @param usage Usage message to show on error
  * @returns A promise that resolves to an object with parsed serverUrl, callbackPort and headers
  */
+/**
+ * Returns a copy of the headers with sensitive values masked, for safe logging (issue #3).
+ * Redacts Authorization, Cookie, Proxy-Authorization and common API-key headers.
+ */
+export function redactSensitiveHeaders(headers: Record<string, string>): Record<string, string> {
+  const sensitive = /^(authorization|cookie|set-cookie|proxy-authorization|x-api-key|api-key)$/i
+  const redacted: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    redacted[key] = sensitive.test(key) ? '[REDACTED]' : value
+  }
+  return redacted
+}
+
 export async function parseCommandLineArgs(args: string[], usage: string) {
   // Process headers
   const headers: Record<string, string> = {}
@@ -757,6 +803,11 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   const serverUrl = args[0]
   const specifiedPort = args[1] ? parseInt(args[1]) : undefined
   const allowHttp = args.includes('--allow-http')
+  if (allowHttp) {
+    // issue #11: make the downgrade to plaintext explicit — tokens and bearer
+    // headers would then transit unencrypted.
+    log('⚠️  Warning: --allow-http is set. OAuth tokens and headers may be sent over unencrypted HTTP.')
+  }
 
   // Check for debug flag
   const debug = args.includes('--debug')
@@ -798,6 +849,15 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   if (hostIndex !== -1 && hostIndex < args.length - 1) {
     host = args[hostIndex + 1]
     log(`Using callback hostname: ${host}`)
+    // issue #10: the callback server always binds 127.0.0.1, so a non-loopback
+    // --host produces a redirect_uri the local listener can never receive.
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      log(
+        `⚠️  Warning: --host is "${host}" but the OAuth callback server only listens on 127.0.0.1. ` +
+          `The authorization code will be sent to "${host}" and will not reach this process unless you have ` +
+          `arranged for that address to forward to localhost.`,
+      )
+    }
   }
 
   let staticOAuthClientMetadata: StaticOAuthClientMetadata = null
@@ -911,7 +971,7 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   }
 
   if (Object.keys(headers).length > 0) {
-    log(`Using custom headers: ${JSON.stringify(headers)}`)
+    log(`Using custom headers: ${JSON.stringify(redactSensitiveHeaders(headers))}`)
   }
   // Replace environment variables in headers
   // example `Authorization: Bearer ${TOKEN}` will read process.env.TOKEN
@@ -972,7 +1032,7 @@ export function setupSignalHandlers(cleanup: () => Promise<void>) {
  * @param serverUrl The server URL
  * @param authorizeResource Optional resource parameter for OAuth
  * @param headers Optional custom headers
- * @returns MD5 hash of the configuration
+ * @returns SHA-256 hash of the configuration
  */
 export function getServerUrlHash(serverUrl: string, authorizeResource?: string, headers?: Record<string, string>): string {
   // Include resource and headers in hash to isolate OAuth sessions
@@ -983,7 +1043,10 @@ export function getServerUrlHash(serverUrl: string, authorizeResource?: string, 
     const sortedKeys = Object.keys(headers).sort()
     parts.push(JSON.stringify(headers, sortedKeys))
   }
-  return crypto.createHash('md5').update(parts.join('|')).digest('hex')
+  // SHA-256 (issue #9): avoids MD5's collision weakness and security-scanner flags.
+  // Note: changing the hash changes the on-disk namespace, so existing users
+  // re-authenticate once after upgrading.
+  return crypto.createHash('sha256').update(parts.join('|')).digest('hex')
 }
 
 /**

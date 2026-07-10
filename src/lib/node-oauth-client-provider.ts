@@ -49,7 +49,9 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     this.staticOAuthClientMetadata = options.staticOAuthClientMetadata
     this.staticOAuthClientInfo = options.staticOAuthClientInfo
     this.authorizeResource = options.authorizeResource
-    this._state = randomUUID()
+    // Prefer a state nonce shared with the OAuth callback server (so the callback
+    // can validate it — issue #5); fall back to a fresh one for standalone use.
+    this._state = options.state ?? randomUUID()
     this._clientInfo = undefined
     this.authorizationServerMetadata = options.authorizationServerMetadata
     this.protectedResourceMetadata = options.protectedResourceMetadata
@@ -115,6 +117,9 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
 
     // Priority 2: Scope from WWW-Authenticate header (per MCP spec)
     if (this.wwwAuthenticateScope && this.wwwAuthenticateScope.trim().length > 0) {
+      // Server-controlled scope (issue #8): a malicious server could request broad
+      // scopes at a legitimate IdP. Surface it so the user can review the consent screen.
+      log(`Warning: requesting OAuth scope supplied by the server (WWW-Authenticate): "${this.wwwAuthenticateScope}"`)
       debugLog('Using scope from WWW-Authenticate header', { scope: this.wwwAuthenticateScope })
       return this.wwwAuthenticateScope
     }
@@ -122,6 +127,7 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     // Priority 3: Scopes from Protected Resource Metadata (RFC 9728)
     if (this.protectedResourceMetadata?.scopes_supported?.length) {
       const scope = this.protectedResourceMetadata.scopes_supported.join(' ')
+      log(`Warning: requesting OAuth scope supplied by the server (Protected Resource Metadata): "${scope}"`)
       debugLog('Using scopes from Protected Resource Metadata', {
         scopes_supported: this.protectedResourceMetadata.scopes_supported,
         scope,
@@ -138,6 +144,7 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     // Priority 5: Use authorization server's supported scopes if available
     if (this.authorizationServerMetadata?.scopes_supported?.length) {
       const scope = this.authorizationServerMetadata.scopes_supported.join(' ')
+      log(`Warning: requesting OAuth scope advertised by the authorization server: "${scope}"`)
       debugLog('Using scopes from Authorization Server Metadata', {
         scopes_supported: this.authorizationServerMetadata.scopes_supported,
         scope,
@@ -200,9 +207,12 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
 
       // Alert if expires_in is invalid
       if (typeof tokens.expires_in !== 'number' || tokens.expires_in < 0) {
+        // Do NOT serialize the token object here: the debug log is not a secure
+        // sink and this would leak the access/refresh token (issue #1).
         debugLog('⚠️ WARNING: Invalid expires_in detected while reading tokens ⚠️', {
           expiresIn: tokens.expires_in,
-          tokenObject: JSON.stringify(tokens),
+          hasAccessToken: !!tokens.access_token,
+          hasRefreshToken: !!tokens.refresh_token,
           stack: new Error('Invalid expires_in value').stack,
         })
       }
@@ -231,9 +241,12 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
 
     // Alert if expires_in is invalid
     if (typeof tokens.expires_in !== 'number' || tokens.expires_in < 0) {
+      // Do NOT serialize the token object here (issue #1) — the debug log is
+      // world-readable-adjacent and this would leak live credentials.
       debugLog('⚠️ WARNING: Invalid expires_in detected in tokens ⚠️', {
         expiresIn: tokens.expires_in,
-        tokenObject: JSON.stringify(tokens),
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
         stack: new Error('Invalid expires_in value').stack,
       })
     }

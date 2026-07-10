@@ -39,6 +39,8 @@ export interface OAuthProviderOptions {
   protectedResourceMetadata?: ProtectedResourceMetadata
   /** Scope extracted from WWW-Authenticate header */
   wwwAuthenticateScope?: string
+  /** Pre-generated OAuth `state` nonce, shared with the callback server for CSRF validation */
+  state?: string
 }
 
 /**
@@ -53,6 +55,10 @@ export interface OAuthCallbackServerOptions {
   events: EventEmitter
   /** Timeout in milliseconds for the auth callback server's long poll */
   authTimeoutMs?: number
+  /** Expected OAuth `state` nonce; when set, the callback rejects mismatching values (CSRF defense) */
+  expectedState?: string
+  /** Per-instance secret echoed on /wait-for-auth so peers can verify the lockfile owner */
+  authSecret?: string
 }
 
 // optional tatic OAuth client information

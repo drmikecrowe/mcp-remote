@@ -1,0 +1,8 @@
+# pnpm v10 reads dependency overrides from here (no longer from package.json's "pnpm" field).
+# Security overrides for vulnerable express transitive dependencies (issue #12):
+#   - path-to-regexp: pin the patched 0.1.x line. Express 4 requires the 0.1.x API,
+#     so we must NOT let this float to 8.x. 0.1.13 fixes the ReDoS advisories.
+#   - qs: DoS advisories fixed in 6.14.2 (fresh resolution already picks a newer patch).
+overrides:
+  path-to-regexp: 0.1.13
+  qs: '>=6.14.2'

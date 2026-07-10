@@ -1,4 +1,26 @@
-import { debugLog } from './utils'
+import { debugLog, log } from './utils'
+import { isSafeMetadataUrl } from './url-safety'
+
+/**
+ * Validates the shape of an Authorization Server Metadata response from an
+ * untrusted server (issue #8). `issuer` must be a string; malformed
+ * scopes_supported is dropped rather than trusted.
+ */
+function validateAuthorizationServerMetadata(data: unknown): AuthorizationServerMetadata | undefined {
+  if (typeof data !== 'object' || data === null) return undefined
+  const obj = data as Record<string, unknown>
+  if (typeof obj.issuer !== 'string') {
+    debugLog('Authorization Server Metadata missing string issuer')
+    return undefined
+  }
+  const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+  const metadata = { ...obj } as AuthorizationServerMetadata
+  if (obj.scopes_supported !== undefined && !isStringArray(obj.scopes_supported)) {
+    debugLog('Dropping malformed scopes_supported in Authorization Server Metadata')
+    delete (metadata as Record<string, unknown>).scopes_supported
+  }
+  return metadata
+}
 
 /**
  * OAuth 2.0 Authorization Server Metadata as defined in RFC 8414
@@ -48,6 +70,13 @@ export async function fetchAuthorizationServerMetadata(serverUrl: string): Promi
 
   debugLog('Fetching authorization server metadata', { serverUrl, metadataUrl })
 
+  // SSRF guard (issue #7): serverUrl may be an authorization server discovered
+  // from server-controlled Protected Resource Metadata.
+  if (!isSafeMetadataUrl(metadataUrl)) {
+    debugLog('Refusing to fetch unsafe authorization server metadata URL', { metadataUrl })
+    return undefined
+  }
+
   try {
     const response = await fetch(metadataUrl, {
       headers: {
@@ -69,7 +98,22 @@ export async function fetchAuthorizationServerMetadata(serverUrl: string): Promi
       return undefined
     }
 
-    const metadata = (await response.json()) as AuthorizationServerMetadata
+    const metadata = validateAuthorizationServerMetadata(await response.json())
+    if (!metadata) {
+      debugLog('Authorization server metadata failed validation', { metadataUrl })
+      return undefined
+    }
+
+    // RFC 8414 §3.3 issuer binding (issue #8): the issuer should match the origin
+    // the metadata was fetched from. Warn (rather than hard-fail) to avoid breaking
+    // legitimately-configured-but-sloppy servers, while surfacing token-confusion risk.
+    try {
+      if (new URL(metadata.issuer).origin !== new URL(metadataUrl).origin) {
+        log(`Warning: authorization server issuer "${metadata.issuer}" does not match metadata origin ${new URL(metadataUrl).origin}`)
+      }
+    } catch {
+      log(`Warning: authorization server issuer "${metadata.issuer}" is not a valid URL`)
+    }
 
     debugLog('Successfully fetched authorization server metadata', {
       issuer: metadata.issuer,

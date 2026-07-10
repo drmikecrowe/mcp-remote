@@ -30,6 +30,8 @@ export interface LockfileData {
   pid: number
   port: number
   timestamp: number
+  /** Per-instance secret; peers verify it against the /wait-for-auth response to confirm the lockfile owner */
+  secret?: string
 }
 
 /**
@@ -38,11 +40,12 @@ export interface LockfileData {
  * @param pid The process ID
  * @param port The port the server is running on
  */
-export async function createLockfile(serverUrlHash: string, pid: number, port: number): Promise<void> {
+export async function createLockfile(serverUrlHash: string, pid: number, port: number, secret?: string): Promise<void> {
   const lockData: LockfileData = {
     pid,
     port,
     timestamp: Date.now(),
+    secret,
   }
   await writeJsonFile(serverUrlHash, 'lock.json', lockData)
 }
@@ -93,7 +96,9 @@ export function getConfigDir(): string {
 export async function ensureConfigDir(): Promise<void> {
   try {
     const configDir = getConfigDir()
-    await fs.mkdir(configDir, { recursive: true })
+    // 0o700: config dir holds OAuth material; keep it owner-only so other local
+    // users cannot enumerate which servers are authenticated (issue #2)
+    await fs.mkdir(configDir, { recursive: true, mode: 0o700 })
   } catch (error) {
     log('Error creating config directory:', error)
     throw error

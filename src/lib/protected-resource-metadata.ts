@@ -1,4 +1,28 @@
 import { debugLog } from './utils'
+import { isSafeMetadataUrl } from './url-safety'
+
+/**
+ * Validates the shape of a Protected Resource Metadata response from an untrusted
+ * server (issue #8). Returns a sanitized object or undefined if the payload is
+ * not a well-formed object. String-array fields with wrong types are dropped
+ * rather than trusted.
+ */
+function validateProtectedResourceMetadata(data: unknown): ProtectedResourceMetadata | undefined {
+  if (typeof data !== 'object' || data === null) return undefined
+  const obj = data as Record<string, unknown>
+  const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+
+  const metadata = { ...obj } as ProtectedResourceMetadata
+  if (obj.authorization_servers !== undefined && !isStringArray(obj.authorization_servers)) {
+    debugLog('Dropping malformed authorization_servers in Protected Resource Metadata')
+    delete (metadata as Record<string, unknown>).authorization_servers
+  }
+  if (obj.scopes_supported !== undefined && !isStringArray(obj.scopes_supported)) {
+    debugLog('Dropping malformed scopes_supported in Protected Resource Metadata')
+    delete (metadata as Record<string, unknown>).scopes_supported
+  }
+  return metadata
+}
 
 /**
  * OAuth 2.0 Protected Resource Metadata as defined in RFC 9728
@@ -129,6 +153,13 @@ export function buildProtectedResourceMetadataUrls(resourceUrl: string): string[
 async function fetchProtectedResourceMetadataFromUrl(metadataUrl: string): Promise<ProtectedResourceMetadata | undefined> {
   debugLog('Fetching Protected Resource Metadata', { metadataUrl })
 
+  // SSRF guard (issue #7): this URL can come straight from a server-controlled
+  // WWW-Authenticate header. Refuse file:// and cloud-metadata/link-local targets.
+  if (!isSafeMetadataUrl(metadataUrl)) {
+    debugLog('Refusing to fetch unsafe Protected Resource Metadata URL', { metadataUrl })
+    return undefined
+  }
+
   try {
     const response = await fetch(metadataUrl, {
       headers: {
@@ -149,7 +180,11 @@ async function fetchProtectedResourceMetadataFromUrl(metadataUrl: string): Promi
       return undefined
     }
 
-    const metadata = (await response.json()) as ProtectedResourceMetadata
+    const metadata = validateProtectedResourceMetadata(await response.json())
+    if (!metadata) {
+      debugLog('Protected Resource Metadata failed validation', { metadataUrl })
+      return undefined
+    }
 
     debugLog('Successfully fetched Protected Resource Metadata', {
       resource: metadata.resource,

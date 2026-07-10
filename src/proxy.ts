@@ -10,6 +10,7 @@
  */
 
 import { EventEmitter } from 'events'
+import { randomUUID } from 'node:crypto'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   connectToRemoteServer,
@@ -44,8 +45,12 @@ async function runProxy(
   // Set up event emitter for auth flow
   const events = new EventEmitter()
 
+  // Generate the OAuth `state` nonce once and share it with both the callback
+  // server (which validates it) and the provider (which sends it) — issue #5.
+  const oauthState = randomUUID()
+
   // Create a lazy auth coordinator
-  const authCoordinator = createLazyAuthCoordinator(serverUrlHash, callbackPort, events, authTimeoutMs)
+  const authCoordinator = createLazyAuthCoordinator(serverUrlHash, callbackPort, events, authTimeoutMs, oauthState)
 
   // Discover OAuth server info via Protected Resource Metadata (RFC 9728)
   // This probes the MCP server for WWW-Authenticate header and fetches PRM
@@ -76,6 +81,7 @@ async function runProxy(
     authorizationServerMetadata: discoveryResult.authorizationServerMetadata,
     protectedResourceMetadata: discoveryResult.protectedResourceMetadata,
     wwwAuthenticateScope: discoveryResult.wwwAuthenticateScope,
+    state: oauthState,
   })
 
   // Create the STDIO transport for local connections

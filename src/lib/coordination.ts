@@ -4,6 +4,7 @@ import { Server } from 'http'
 import express from 'express'
 import { AddressInfo } from 'net'
 import { unlinkSync } from 'fs'
+import { randomUUID } from 'node:crypto'
 import { log, debugLog, setupOAuthCallbackServerWithLongPoll } from './utils'
 
 export type AuthCoordinator = {
@@ -65,7 +66,21 @@ export async function isLockValid(lockData: LockfileData): Promise<boolean> {
 
     clearTimeout(timeout)
 
-    const isValid = response.status === 200 || response.status === 202
+    const statusOk = response.status === 200 || response.status === 202
+
+    // If the lockfile carries a secret, the server on that port must echo it back.
+    // This rejects a stale lockfile whose PID/port was recycled by an unrelated
+    // service, or a planted lockfile pointing at an attacker's server (issue #6).
+    if (statusOk && lockData.secret) {
+      const responseSecret = response.headers.get('x-mcp-auth-secret')
+      if (responseSecret !== lockData.secret) {
+        log('Lockfile secret mismatch — the server on that port is not the expected auth instance')
+        debugLog('Lockfile secret mismatch', { expected: !!lockData.secret, got: !!responseSecret })
+        return false
+      }
+    }
+
+    const isValid = statusOk
     debugLog(`Endpoint check result: ${isValid ? 'valid' : 'invalid'}`, { status: response.status })
     return isValid
   } catch (error) {
@@ -80,12 +95,22 @@ export async function isLockValid(lockData: LockfileData): Promise<boolean> {
  * @param port The port to connect to
  * @returns True if authentication completed successfully, false otherwise
  */
-export async function waitForAuthentication(port: number): Promise<boolean> {
+export async function waitForAuthentication(port: number, expectedSecret?: string): Promise<boolean> {
   log(`Waiting for authentication from the server on port ${port}...`)
+
+  // Overall deadline so a wedged or vanished primary can't hang us forever
+  // (issue #6). Generous, because the primary may be waiting on interactive
+  // browser auth which can legitimately take minutes.
+  const MAX_WAIT_MS = 5 * 60 * 1000
+  const deadline = Date.now() + MAX_WAIT_MS
 
   try {
     let attempts = 0
     while (true) {
+      if (Date.now() > deadline) {
+        log('Timed out waiting for authentication from the other instance; taking over')
+        return false
+      }
       attempts++
       const url = `http://127.0.0.1:${port}/wait-for-auth`
       log(`Querying: ${url}`)
@@ -94,6 +119,15 @@ export async function waitForAuthentication(port: number): Promise<boolean> {
       try {
         const response = await fetch(url)
         debugLog(`Poll response status: ${response.status}`)
+
+        // Verify we're still talking to the expected auth instance (issue #6)
+        if (expectedSecret) {
+          const responseSecret = response.headers.get('x-mcp-auth-secret')
+          if (responseSecret !== expectedSecret) {
+            log('Auth server secret mismatch during poll; taking over')
+            return false
+          }
+        }
 
         if (response.status === 200) {
           // Auth completed, but we don't return the code anymore
@@ -133,6 +167,7 @@ export function createLazyAuthCoordinator(
   callbackPort: number,
   events: EventEmitter,
   authTimeoutMs: number,
+  expectedState?: string,
 ): AuthCoordinator {
   let authState: { server: Server; waitForAuthCode: () => Promise<string>; skipBrowserAuth: boolean } | null = null
 
@@ -148,7 +183,7 @@ export function createLazyAuthCoordinator(
       debugLog('Initializing auth coordination on-demand', { serverUrlHash, callbackPort })
 
       // Initialize auth using the existing coordinateAuth logic
-      authState = await coordinateAuth(serverUrlHash, callbackPort, events, authTimeoutMs)
+      authState = await coordinateAuth(serverUrlHash, callbackPort, events, authTimeoutMs, expectedState)
       debugLog('Auth coordination completed', { skipBrowserAuth: authState.skipBrowserAuth })
       return authState
     },
@@ -167,6 +202,7 @@ export async function coordinateAuth(
   callbackPort: number,
   events: EventEmitter,
   authTimeoutMs: number,
+  expectedState?: string,
 ): Promise<{ server: Server; waitForAuthCode: () => Promise<string>; skipBrowserAuth: boolean }> {
   debugLog('Coordinating authentication', { serverUrlHash, callbackPort })
 
@@ -186,13 +222,13 @@ export async function coordinateAuth(
     try {
       // Try to wait for the authentication to complete
       debugLog('Waiting for authentication from other instance')
-      const authCompleted = await waitForAuthentication(lockData.port)
+      const authCompleted = await waitForAuthentication(lockData.port, lockData.secret)
 
       if (authCompleted) {
         log('Authentication completed by another instance. Using tokens from disk')
 
         // Setup a dummy server - the client will use tokens directly from disk
-        const dummyServer = express().listen(0) // Listen on any available port
+        const dummyServer = express().listen(0, '127.0.0.1') // Listen on any available loopback port (issue #4)
         const dummyPort = (dummyServer.address() as AddressInfo).port
         debugLog('Started dummy server', { port: dummyPort })
 
@@ -225,6 +261,9 @@ export async function coordinateAuth(
     await deleteLockfile(serverUrlHash)
   }
 
+  // Per-instance secret so peers can confirm they're polling the genuine primary (issue #6)
+  const authSecret = randomUUID()
+
   // Create our own lockfile
   debugLog('Setting up OAuth callback server', { port: callbackPort })
   const { server, waitForAuthCode, authCompletedPromise } = setupOAuthCallbackServerWithLongPoll({
@@ -232,6 +271,8 @@ export async function coordinateAuth(
     path: '/oauth/callback',
     events,
     authTimeoutMs,
+    expectedState,
+    authSecret,
   })
 
   // Get the actual port the server is running on
@@ -249,7 +290,7 @@ export async function coordinateAuth(
   debugLog('OAuth callback server running', { port: actualPort })
 
   log(`Creating lockfile for server ${serverUrlHash} with process ${process.pid} on port ${actualPort}`)
-  await createLockfile(serverUrlHash, process.pid, actualPort)
+  await createLockfile(serverUrlHash, process.pid, actualPort, authSecret)
 
   // Make sure lockfile is deleted on process exit
   const cleanupHandler = async () => {
