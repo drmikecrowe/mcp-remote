@@ -983,7 +983,10 @@ export function getServerUrlHash(serverUrl: string, authorizeResource?: string, 
     const sortedKeys = Object.keys(headers).sort()
     parts.push(JSON.stringify(headers, sortedKeys))
   }
-  return crypto.createHash('md5').update(parts.join('|')).digest('hex')
+  // SHA-256 (SEC-7): avoids MD5's collision weakness and the security-scanner flags that
+  // come with it. Note: changing the hash changes the on-disk namespace, so existing users
+  // re-authenticate once after upgrading.
+  return crypto.createHash('sha256').update(parts.join('|')).digest('hex')
 }
 
 /**
