@@ -757,6 +757,11 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   const serverUrl = args[0]
   const specifiedPort = args[1] ? parseInt(args[1]) : undefined
   const allowHttp = args.includes('--allow-http')
+  if (allowHttp) {
+    // SEC-14: make the downgrade to plaintext explicit — OAuth tokens and bearer headers
+    // would then transit unencrypted.
+    log('⚠️  Warning: --allow-http is set. OAuth tokens and headers may be sent over unencrypted HTTP.')
+  }
 
   // Check for debug flag
   const debug = args.includes('--debug')
@@ -798,6 +803,15 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   if (hostIndex !== -1 && hostIndex < args.length - 1) {
     host = args[hostIndex + 1]
     log(`Using callback hostname: ${host}`)
+    // SEC-8: the callback server always binds 127.0.0.1, so a non-loopback --host produces
+    // a redirect_uri the local listener can never receive.
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      log(
+        `⚠️  Warning: --host is "${host}" but the OAuth callback server only listens on 127.0.0.1. ` +
+          `The authorization code will be sent to "${host}" and will not reach this process unless you have ` +
+          `arranged for that address to forward to localhost.`,
+      )
+    }
   }
 
   let staticOAuthClientMetadata: StaticOAuthClientMetadata = null
@@ -835,6 +849,16 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   const resourceIndex = args.indexOf('--resource')
   if (resourceIndex !== -1 && resourceIndex < args.length - 1) {
     authorizeResource = args[resourceIndex + 1]
+    // RFC 8707 requires the resource indicator to be an absolute URI. It is sent on both the
+    // authorization and token requests, so reject a malformed value here rather than failing
+    // partway through the OAuth flow.
+    try {
+      new URL(authorizeResource)
+    } catch {
+      log(`Error: --resource must be an absolute URI, got: ${authorizeResource}`)
+      log(usage)
+      process.exit(1)
+    }
     log(`Using authorize resource: ${authorizeResource}`)
   }
 
