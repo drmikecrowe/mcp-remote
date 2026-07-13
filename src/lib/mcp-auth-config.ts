@@ -93,7 +93,13 @@ export function getConfigDir(): string {
 export async function ensureConfigDir(): Promise<void> {
   try {
     const configDir = getConfigDir()
-    await fs.mkdir(configDir, { recursive: true })
+    // 0o700: config dir holds OAuth material; keep it owner-only so other local
+    // users cannot enumerate which servers are authenticated (SEC-2)
+    await fs.mkdir(configDir, { recursive: true, mode: 0o700 })
+    // mkdir's mode only applies when the directory is created. Existing installs
+    // (created 0o755 by earlier versions) would otherwise stay world-listable, so
+    // tighten explicitly on every run.
+    await fs.chmod(configDir, 0o700)
   } catch (error) {
     log('Error creating config directory:', error)
     throw error

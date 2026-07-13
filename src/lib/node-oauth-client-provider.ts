@@ -200,9 +200,12 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
 
       // Alert if expires_in is invalid
       if (typeof tokens.expires_in !== 'number' || tokens.expires_in < 0) {
+        // Do NOT serialize the token object here: the debug log is not a secure
+        // sink and this would leak the access/refresh token (SEC-1).
         debugLog('⚠️ WARNING: Invalid expires_in detected while reading tokens ⚠️', {
           expiresIn: tokens.expires_in,
-          tokenObject: JSON.stringify(tokens),
+          hasAccessToken: !!tokens.access_token,
+          hasRefreshToken: !!tokens.refresh_token,
           stack: new Error('Invalid expires_in value').stack,
         })
       }
@@ -231,9 +234,12 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
 
     // Alert if expires_in is invalid
     if (typeof tokens.expires_in !== 'number' || tokens.expires_in < 0) {
+      // Do NOT serialize the token object here (SEC-1) — the debug log is
+      // world-readable-adjacent and this would leak live credentials.
       debugLog('⚠️ WARNING: Invalid expires_in detected in tokens ⚠️', {
         expiresIn: tokens.expires_in,
-        tokenObject: JSON.stringify(tokens),
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
         stack: new Error('Invalid expires_in value').stack,
       })
     }
