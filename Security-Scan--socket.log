@@ -1,0 +1,30 @@
+# Scan Policy Report
+
+This report tells you whether the results of a Socket scan results violate the
+security policy set by your organization.
+
+## Health status
+
+The scan *PASSES* all requirements set by your security policy.
+
+## Settings
+
+Configuration used to generate this report:
+
+- Organization: drmikecrowepersonal
+- Scan ID: b512ff62-3c5c-437f-b779-52022b03240a
+- Alert folding: none
+- Minimal policy level for alert to be included in report: warn
+- Include license alerts: no
+
+## Alerts
+
+All the alerts from the scan with a policy set to at least "warn".
+
+| ------ | ----------- | ------- | ------------- | ---------------------------------------------------- | ----------------------------------------- |
+| Policy | Alert Type  | Package | Introduced by | url                                                  | Manifest file                             |
+| ------ | ----------- | ------- | ------------- | ---------------------------------------------------- | ----------------------------------------- |
+| warn   | criticalCVE | vitest  | 2.1.9         | https://socket.dev/npm/package/vitest/overview/2.1.9 | test/package.json and test/pnpm-lock.yaml |
+| ------ | ----------- | ------- | ------------- | ---------------------------------------------------- | ----------------------------------------- |
+
+

@@ -1,0 +1,44 @@
+
+Testing /home/mcrowe/Programming/AI/mcp-remote...
+
+Tested 82 dependencies for known issues, found 1 issue, 1 vulnerable path.
+
+
+Issues with no direct upgrade or patch:
+  ✗ Allocation of Resources Without Limits or Throttling [Medium Severity][https://security.snyk.io/vuln/SNYK-JS-BODYPARSER-17906397] in body-parser@1.20.3
+    introduced by express@4.22.0 > body-parser@1.20.3
+  This issue was fixed in versions: 1.20.6, 2.3.0
+
+
+
+Organization:      drmikecrowe
+Package manager:   pnpm
+Target file:       package.json
+Project name:      @drmikecrowe/mcp-remote
+Open source:       no
+Project path:      /home/mcrowe/Programming/AI/mcp-remote
+Licenses:          enabled
+
+-------------------------------------------------------
+
+Testing /home/mcrowe/Programming/AI/mcp-remote...
+
+Organization:      drmikecrowe
+Package manager:   pnpm
+Target file:       test/pnpm-lock.yaml
+Project name:      mcp-remote-tests
+Open source:       no
+Project path:      /home/mcrowe/Programming/AI/mcp-remote
+Licenses:          enabled
+
+✔ Tested /home/mcrowe/Programming/AI/mcp-remote for known issues, no vulnerable paths found.
+
+Next steps:
+- Run `snyk monitor` to be notified about new related vulnerabilities.
+- Run `snyk test` as part of your CI/test.
+
+
+Tested 2 projects, 1 contained vulnerable paths.
+
+
+
