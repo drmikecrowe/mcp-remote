@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { parseCommandLineArgs, shouldIncludeTool, mcpProxy, setupOAuthCallbackServerWithLongPoll, getServerUrlHash } from './utils'
+import {
+  parseCommandLineArgs,
+  shouldIncludeTool,
+  mcpProxy,
+  setupOAuthCallbackServerWithLongPoll,
+  getServerUrlHash,
+  buildClientName,
+} from './utils'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { EventEmitter } from 'events'
 import express from 'express'
@@ -1062,5 +1069,57 @@ describe('Feature: Server URL Hash Generation', () => {
     const hash1 = getServerUrlHash('https://example.com', '')
     const hash2 = getServerUrlHash('https://example.com')
     expect(hash1).toBe(hash2)
+  })
+})
+
+describe('Feature: OAuth Client Name', () => {
+  it('Scenario: Parse --client-name flag', async () => {
+    // Given command line arguments with a client name
+    const args = ['https://example.com/sse', '--client-name', 'Jira - Acme']
+
+    // When parsing the command line arguments
+    const result = await parseCommandLineArgs(args, 'test usage')
+
+    // Then the client name should be extracted
+    expect(result.clientName).toBe('Jira - Acme')
+  })
+
+  it('Scenario: Client name defaults to empty when flag is absent', async () => {
+    // Given command line arguments without a client name
+    const args = ['https://example.com/sse']
+
+    // When parsing the command line arguments
+    const result = await parseCommandLineArgs(args, 'test usage')
+
+    // Then the client name should be empty, leaving the default to the call site
+    expect(result.clientName).toBe('')
+  })
+
+  it('Scenario: Falls back to the default name when neither flag is provided', () => {
+    // Given no client name and no resource
+    // When building the client name
+    // Then the entrypoint default should be used unchanged
+    expect(buildClientName('', 'MCP CLI Proxy', '')).toBe('MCP CLI Proxy')
+  })
+
+  it('Scenario: Appends the resource so instances are distinguishable', () => {
+    // Given a resource but no explicit client name
+    // When building the client name
+    // Then the resource should be appended to the default name
+    expect(buildClientName('', 'MCP CLI Proxy', 'https://tenant1.atlassian.net/')).toBe('MCP CLI Proxy (https://tenant1.atlassian.net/)')
+  })
+
+  it('Scenario: Explicit client name replaces the default label', () => {
+    // Given an explicit client name and no resource
+    // When building the client name
+    // Then the explicit name should be used verbatim
+    expect(buildClientName('Jira - Acme', 'MCP CLI Proxy', '')).toBe('Jira - Acme')
+  })
+
+  it('Scenario: Explicit client name still gets the resource appended', () => {
+    // Given both an explicit client name and a resource
+    // When building the client name
+    // Then the resource should be appended to the explicit name
+    expect(buildClientName('Jira - Acme', 'MCP CLI Proxy', 'https://acme.atlassian.net/')).toBe('Jira - Acme (https://acme.atlassian.net/)')
   })
 })

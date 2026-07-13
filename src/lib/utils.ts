@@ -895,7 +895,26 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   const resourceIndex = args.indexOf('--resource')
   if (resourceIndex !== -1 && resourceIndex < args.length - 1) {
     authorizeResource = args[resourceIndex + 1]
+    // RFC 8707 requires the resource indicator to be an absolute URI. It is sent on both
+    // the authorization and token requests, so reject a malformed value here rather than
+    // failing partway through the OAuth flow.
+    try {
+      new URL(authorizeResource)
+    } catch {
+      log(`Error: --resource must be an absolute URI, got: ${authorizeResource}`)
+      log(usage)
+      process.exit(1)
+    }
     log(`Using authorize resource: ${authorizeResource}`)
+  }
+
+  // Parse the client name presented to the authorization server during dynamic
+  // client registration. Falls back to a resource-derived name at the call site.
+  let clientName = '' // Default
+  const clientNameIndex = args.indexOf('--client-name')
+  if (clientNameIndex !== -1 && clientNameIndex < args.length - 1) {
+    clientName = args[clientNameIndex + 1]
+    log(`Using client name: ${clientName}`)
   }
 
   // Parse ignored tools
@@ -999,10 +1018,24 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
     staticOAuthClientMetadata,
     staticOAuthClientInfo,
     authorizeResource,
+    clientName,
     ignoredTools,
     authTimeoutMs,
     serverUrlHash,
   }
+}
+
+/**
+ * Builds the client_name sent during dynamic client registration.
+ * The resource is appended so multiple instances of the same server (e.g. one per
+ * Atlassian tenant) are distinguishable on the authorization server's consent screen.
+ * @param clientName Explicit name from --client-name, or '' when not provided
+ * @param defaultName Fallback label for the entrypoint (proxy or client)
+ * @param authorizeResource Resource from --resource, or '' when not provided
+ */
+export function buildClientName(clientName: string, defaultName: string, authorizeResource: string): string {
+  const baseName = clientName || defaultName
+  return authorizeResource ? `${baseName} (${authorizeResource})` : baseName
 }
 
 /**
