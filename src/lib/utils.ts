@@ -626,6 +626,18 @@ export function setupOAuthCallbackServerWithLongPoll(options: OAuthCallbackServe
       return
     }
 
+    // CSRF defense (SEC-4, RFC 9700 §2.1): if we generated a `state` nonce, the
+    // callback must carry it back unchanged. This blocks a local process (or a web
+    // page that guessed the port) from injecting an authorization code of its own.
+    if (options.expectedState) {
+      const state = req.query.state as string | undefined
+      if (state !== options.expectedState) {
+        log('Rejecting OAuth callback: state parameter missing or mismatched')
+        res.status(400).send('Error: invalid state parameter')
+        return
+      }
+    }
+
     authCode = code
     log('Auth code received, resolving promise')
     authCompletedResolve(code)

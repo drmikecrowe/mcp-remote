@@ -49,7 +49,9 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     this.staticOAuthClientMetadata = options.staticOAuthClientMetadata
     this.staticOAuthClientInfo = options.staticOAuthClientInfo
     this.authorizeResource = options.authorizeResource
-    this._state = randomUUID()
+    // Prefer a state nonce shared with the OAuth callback server (so the callback
+    // can validate it — SEC-4); fall back to a fresh one for standalone use.
+    this._state = options.state ?? randomUUID()
     this._clientInfo = undefined
     this.authorizationServerMetadata = options.authorizationServerMetadata
     this.protectedResourceMetadata = options.protectedResourceMetadata
