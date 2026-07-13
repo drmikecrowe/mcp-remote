@@ -1,4 +1,5 @@
 import { debugLog } from './utils'
+import { isSafeMetadataUrl } from './url-safety'
 
 /**
  * OAuth 2.0 Authorization Server Metadata as defined in RFC 8414
@@ -47,6 +48,13 @@ export async function fetchAuthorizationServerMetadata(serverUrl: string): Promi
   const metadataUrl = getMetadataUrl(serverUrl)
 
   debugLog('Fetching authorization server metadata', { serverUrl, metadataUrl })
+
+  // SSRF guard (SEC-9): serverUrl may be an authorization server discovered from
+  // server-controlled Protected Resource Metadata.
+  if (!isSafeMetadataUrl(metadataUrl)) {
+    debugLog('Refusing to fetch unsafe authorization server metadata URL', { metadataUrl })
+    return undefined
+  }
 
   try {
     const response = await fetch(metadataUrl, {
