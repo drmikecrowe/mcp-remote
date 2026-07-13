@@ -303,3 +303,57 @@ describe('NodeOAuthClientProvider - OAuth Scope Handling', () => {
     })
   })
 })
+
+describe('NodeOAuthClientProvider - Resource Indicator (RFC 8707)', () => {
+  const defaultOptions: OAuthProviderOptions = {
+    serverUrl: 'https://example.com',
+    callbackPort: 8080,
+    host: 'localhost',
+    serverUrlHash: 'test-hash',
+  }
+
+  it('should return the --resource override as the resource indicator', async () => {
+    // Given a provider configured with an explicit authorize resource
+    const provider = new NodeOAuthClientProvider({
+      ...defaultOptions,
+      authorizeResource: 'https://tenant1.atlassian.net/',
+    })
+
+    // When the SDK selects the resource indicator
+    const resource = await provider.validateResourceURL('https://mcp.atlassian.com/v1/sse', 'https://mcp.atlassian.com/v1/sse')
+
+    // Then the override wins, so the authorization and token requests share this audience
+    expect(resource?.href).toBe('https://tenant1.atlassian.net/')
+  })
+
+  it('should fall back to the Protected Resource Metadata resource when no override is set', async () => {
+    // Given a provider with no authorize resource
+    const provider = new NodeOAuthClientProvider(defaultOptions)
+
+    // When the SDK selects the resource indicator with PRM present
+    const resource = await provider.validateResourceURL('https://example.com/sse', 'https://example.com')
+
+    // Then the PRM resource is used, matching the SDK's default behavior
+    expect(resource?.href).toBe('https://example.com/')
+  })
+
+  it('should return undefined when no override and no Protected Resource Metadata', async () => {
+    // Given a provider with no authorize resource
+    const provider = new NodeOAuthClientProvider(defaultOptions)
+
+    // When the SDK selects the resource indicator without PRM
+    const resource = await provider.validateResourceURL('https://example.com/sse', undefined)
+
+    // Then no resource indicator is sent, matching the SDK's default behavior
+    expect(resource).toBeUndefined()
+  })
+
+  it('should reject a Protected Resource Metadata resource that does not match the server', async () => {
+    // Given a provider with no authorize resource
+    const provider = new NodeOAuthClientProvider(defaultOptions)
+
+    // When PRM advertises a resource on an unrelated origin
+    // Then it should be rejected rather than silently trusted
+    await expect(provider.validateResourceURL('https://example.com/sse', 'https://evil.com')).rejects.toThrow(/does not match expected/)
+  })
+})

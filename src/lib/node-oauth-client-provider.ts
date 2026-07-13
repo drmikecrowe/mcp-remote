@@ -6,6 +6,7 @@ import {
   OAuthTokens,
   OAuthTokensSchema,
 } from '@modelcontextprotocol/sdk/shared/auth.js'
+import { checkResourceAllowed, resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 import type { OAuthProviderOptions, StaticOAuthClientMetadata } from './types'
 import { readJsonFile, writeJsonFile, readTextFile, writeTextFile, deleteConfigFile } from './mcp-auth-config'
 import { StaticOAuthClientInformationFull } from './types'
@@ -249,6 +250,35 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
   }
 
   /**
+   * Selects the RFC 8707 resource indicator. The SDK calls this from selectResourceURL and
+   * sends the result on BOTH the authorization request and the token request, so the
+   * audience of the issued token stays bound to the resource the user consented to.
+   *
+   * Setting `resource` only on the authorization URL (the previous behaviour) left the token
+   * exchange requesting a different audience than the one that was authorized.
+   *
+   * @param serverUrl The MCP server URL the SDK is authenticating against
+   * @param resource The resource advertised by Protected Resource Metadata, if any
+   */
+  async validateResourceURL(serverUrl: string | URL, resource?: string): Promise<URL | undefined> {
+    if (this.authorizeResource) {
+      debugLog('Using resource indicator from --resource', { resource: this.authorizeResource })
+      return new URL(this.authorizeResource)
+    }
+
+    // No override: mirror the SDK default. Only send a resource indicator when the server
+    // publishes Protected Resource Metadata, and require it to match the server.
+    if (!resource) {
+      return undefined
+    }
+    const requestedResource = resourceUrlFromServerUrl(serverUrl)
+    if (!checkResourceAllowed({ requestedResource, configuredResource: resource })) {
+      throw new Error(`Protected resource ${resource} does not match expected ${requestedResource} (or origin)`)
+    }
+    return new URL(resource)
+  }
+
+  /**
    * Redirects the user to the authorization URL
    * @param authorizationUrl The URL to redirect to
    */
@@ -257,10 +287,6 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     this.getAuthorizationServerMetadata().catch(() => {
       // Ignore errors, metadata is optional
     })
-
-    if (this.authorizeResource) {
-      authorizationUrl.searchParams.set('resource', this.authorizeResource)
-    }
 
     const effectiveScope = this.getEffectiveScope()
     authorizationUrl.searchParams.set('scope', effectiveScope)

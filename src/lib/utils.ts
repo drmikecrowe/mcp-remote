@@ -838,6 +838,15 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
     log(`Using authorize resource: ${authorizeResource}`)
   }
 
+  // Client name presented to the authorization server during dynamic client registration.
+  // Falls back to a resource-derived name at the call site.
+  let clientName = '' // Default
+  const clientNameIndex = args.indexOf('--client-name')
+  if (clientNameIndex !== -1 && clientNameIndex < args.length - 1) {
+    clientName = args[clientNameIndex + 1]
+    log(`Using client name: ${clientName}`)
+  }
+
   // Parse ignored tools
   const ignoredTools: string[] = []
   let j = 0
@@ -939,10 +948,25 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
     staticOAuthClientMetadata,
     staticOAuthClientInfo,
     authorizeResource,
+    clientName,
     ignoredTools,
     authTimeoutMs,
     serverUrlHash,
   }
+}
+
+/**
+ * Builds the client_name sent during dynamic client registration.
+ * The resource is appended so multiple instances of the same server (e.g. one per Atlassian
+ * tenant) are distinguishable on the authorization server's consent screen and in its list
+ * of connected apps.
+ * @param clientName Explicit name from --client-name, or '' when not provided
+ * @param defaultName Fallback label for the entrypoint (proxy or client)
+ * @param authorizeResource Resource from --resource, or '' when not provided
+ */
+export function buildClientName(clientName: string, defaultName: string, authorizeResource: string): string {
+  const baseName = clientName || defaultName
+  return authorizeResource ? `${baseName} (${authorizeResource})` : baseName
 }
 
 /**
