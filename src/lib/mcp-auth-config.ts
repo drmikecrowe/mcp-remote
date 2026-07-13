@@ -30,6 +30,8 @@ export interface LockfileData {
   pid: number
   port: number
   timestamp: number
+  /** Per-instance secret; peers verify it against the /wait-for-auth response to confirm the lockfile owner (SEC-5) */
+  secret?: string
 }
 
 /**
@@ -38,11 +40,12 @@ export interface LockfileData {
  * @param pid The process ID
  * @param port The port the server is running on
  */
-export async function createLockfile(serverUrlHash: string, pid: number, port: number): Promise<void> {
+export async function createLockfile(serverUrlHash: string, pid: number, port: number, secret?: string): Promise<void> {
   const lockData: LockfileData = {
     pid,
     port,
     timestamp: Date.now(),
+    secret,
   }
   await writeJsonFile(serverUrlHash, 'lock.json', lockData)
 }

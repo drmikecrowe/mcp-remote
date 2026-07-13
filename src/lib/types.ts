@@ -53,6 +53,8 @@ export interface OAuthCallbackServerOptions {
   events: EventEmitter
   /** Timeout in milliseconds for the auth callback server's long poll */
   authTimeoutMs?: number
+  /** Per-instance secret echoed on /wait-for-auth so peers can verify the lockfile owner (SEC-5) */
+  authSecret?: string
 }
 
 // optional tatic OAuth client information
