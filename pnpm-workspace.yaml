@@ -1,0 +1,8 @@
+onlyBuiltDependencies:
+  - esbuild
+overrides:
+  # express 4.x pins path-to-regexp 0.1.12 (ReDoS, GHSA-37ch-88jc-xwx2 / CVE-2026-4867).
+  # 0.1.13 is the fix; express has not yet shipped a 4.x release that picks it up.
+  path-to-regexp: 0.1.13
+  # express transitive; GHSA for prototype-pollution in qs < 6.14.2
+  qs: '>=6.14.2'
