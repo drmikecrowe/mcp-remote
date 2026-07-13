@@ -729,6 +729,22 @@ export async function findAvailablePort(preferredPort?: number): Promise<number>
 }
 
 /**
+ * Returns a copy of the headers with sensitive values masked, for safe logging (SEC-3).
+ * `--header "Authorization: Bearer sk-..."` is otherwise echoed verbatim to stderr and,
+ * under --debug, to the log file.
+ * @param headers The headers to redact
+ * @returns A copy with sensitive values replaced by [REDACTED]
+ */
+export function redactSensitiveHeaders(headers: Record<string, string>): Record<string, string> {
+  const sensitive = /^(authorization|cookie|set-cookie|proxy-authorization|x-api-key|api-key)$/i
+  const redacted: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    redacted[key] = sensitive.test(key) ? '[REDACTED]' : value
+  }
+  return redacted
+}
+
+/**
  * Parses command line arguments for MCP clients and proxies
  * @param args Command line arguments
  * @param usage Usage message to show on error
@@ -911,7 +927,7 @@ export async function parseCommandLineArgs(args: string[], usage: string) {
   }
 
   if (Object.keys(headers).length > 0) {
-    log(`Using custom headers: ${JSON.stringify(headers)}`)
+    log(`Using custom headers: ${JSON.stringify(redactSensitiveHeaders(headers))}`)
   }
   // Replace environment variables in headers
   // example `Authorization: Bearer ${TOKEN}` will read process.env.TOKEN
