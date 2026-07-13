@@ -357,6 +357,21 @@ export async function discoverOAuthServerInfo(
     debugLog('No Protected Resource Metadata found, falling back to server URL as authorization server')
   }
 
+  // Warn when the discovered authorization server is on a different origin than the MCP
+  // server the user actually asked for (SEC-10). This is legitimate for split-domain IdPs
+  // (Google/Okta/Entra), but a malicious server could redirect the OAuth flow to an
+  // authorization server it controls, capturing client registration and tokens. Make it visible.
+  try {
+    if (new URL(authorizationServerUrl).origin !== new URL(serverUrl).origin) {
+      log(
+        `Warning: authorization server ${new URL(authorizationServerUrl).origin} is on a different origin than the MCP server ${new URL(serverUrl).origin}. ` +
+          `Proceed only if you trust this authorization server.`,
+      )
+    }
+  } catch {
+    // ignore URL parse issues here; downstream validation handles bad URLs
+  }
+
   // Step 4: Fetch Authorization Server Metadata
   const authorizationServerMetadata = await fetchAuthorizationServerMetadata(authorizationServerUrl)
 

@@ -115,6 +115,9 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
 
     // Priority 2: Scope from WWW-Authenticate header (per MCP spec)
     if (this.wwwAuthenticateScope && this.wwwAuthenticateScope.trim().length > 0) {
+      // Server-controlled scope (SEC-11): a malicious server could request broad scopes at a
+      // legitimate IdP. Surface it so the user can review the consent screen.
+      log(`Warning: requesting OAuth scope supplied by the server (WWW-Authenticate): "${this.wwwAuthenticateScope}"`)
       debugLog('Using scope from WWW-Authenticate header', { scope: this.wwwAuthenticateScope })
       return this.wwwAuthenticateScope
     }
@@ -122,6 +125,7 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     // Priority 3: Scopes from Protected Resource Metadata (RFC 9728)
     if (this.protectedResourceMetadata?.scopes_supported?.length) {
       const scope = this.protectedResourceMetadata.scopes_supported.join(' ')
+      log(`Warning: requesting OAuth scope supplied by the server (Protected Resource Metadata): "${scope}"`)
       debugLog('Using scopes from Protected Resource Metadata', {
         scopes_supported: this.protectedResourceMetadata.scopes_supported,
         scope,
@@ -138,6 +142,7 @@ export class NodeOAuthClientProvider implements OAuthClientProvider {
     // Priority 5: Use authorization server's supported scopes if available
     if (this.authorizationServerMetadata?.scopes_supported?.length) {
       const scope = this.authorizationServerMetadata.scopes_supported.join(' ')
+      log(`Warning: requesting OAuth scope advertised by the authorization server: "${scope}"`)
       debugLog('Using scopes from Authorization Server Metadata', {
         scopes_supported: this.authorizationServerMetadata.scopes_supported,
         scope,
