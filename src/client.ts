@@ -10,6 +10,7 @@
  */
 
 import { EventEmitter } from 'events'
+import { randomUUID } from 'node:crypto'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { ListResourcesResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { NodeOAuthClientProvider } from './lib/node-oauth-client-provider'
@@ -43,8 +44,12 @@ async function runClient(
   // Set up event emitter for auth flow
   const events = new EventEmitter()
 
+  // Generate the OAuth `state` nonce once and share it with both the callback server
+  // (which validates it) and the provider (which sends it) — SEC-4.
+  const oauthState = randomUUID()
+
   // Create a lazy auth coordinator
-  const authCoordinator = createLazyAuthCoordinator(serverUrlHash, callbackPort, events, authTimeoutMs)
+  const authCoordinator = createLazyAuthCoordinator(serverUrlHash, callbackPort, events, authTimeoutMs, oauthState)
 
   // Discover OAuth server info via Protected Resource Metadata (RFC 9728)
   // This probes the MCP server for WWW-Authenticate header and fetches PRM
@@ -74,6 +79,7 @@ async function runClient(
     authorizationServerMetadata: discoveryResult.authorizationServerMetadata,
     protectedResourceMetadata: discoveryResult.protectedResourceMetadata,
     wwwAuthenticateScope: discoveryResult.wwwAuthenticateScope,
+    state: oauthState,
   })
 
   // Create the client
