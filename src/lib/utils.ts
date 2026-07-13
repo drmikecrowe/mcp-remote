@@ -64,15 +64,19 @@ export function debugLog(message: string, ...args: any[]) {
     // Log to console
     console.error(formattedMessage, ...args)
 
-    // Ensure config directory exists
+    // Ensure config directory exists (owner-only — SEC-2)
     const configDir = getConfigDir()
-    fs.mkdirSync(configDir, { recursive: true })
+    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 })
 
-    // Append to log file
+    // Append to log file. mode 0o600 so the debug log (which can contain auth
+    // server URLs, scopes and stack traces) is not world-readable (SEC-1).
     const logPath = path.join(configDir, `${serverUrlHash}_debug.log`)
     const logMessage = `${formattedMessage} ${args.map((arg) => (typeof arg === 'object' ? JSON.stringify(arg) : String(arg))).join(' ')}\n`
 
-    fs.appendFileSync(logPath, logMessage, { encoding: 'utf8' })
+    fs.appendFileSync(logPath, logMessage, { encoding: 'utf8', mode: 0o600 })
+    // The mode above only applies when the file is created; a log left behind by an
+    // earlier version would stay 0o644, so tighten it explicitly.
+    fs.chmodSync(logPath, 0o600)
   } catch (error) {
     // Fallback to console if file logging fails
     console.error(`[DEBUG LOG ERROR] ${error}`)
