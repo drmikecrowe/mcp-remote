@@ -20,6 +20,7 @@ import {
   setupSignalHandlers,
   TransportStrategy,
   discoverOAuthServerInfo,
+  buildClientName,
 } from './lib/utils'
 import { StaticOAuthClientInformationFull, StaticOAuthClientMetadata } from './lib/types'
 import { NodeOAuthClientProvider } from './lib/node-oauth-client-provider'
@@ -37,6 +38,7 @@ async function runProxy(
   staticOAuthClientMetadata: StaticOAuthClientMetadata,
   staticOAuthClientInfo: StaticOAuthClientInformationFull,
   authorizeResource: string,
+  clientName: string,
   ignoredTools: string[],
   authTimeoutMs: number,
   serverUrlHash: string,
@@ -68,7 +70,7 @@ async function runProxy(
     serverUrl: discoveryResult.authorizationServerUrl,
     callbackPort,
     host,
-    clientName: 'MCP CLI Proxy',
+    clientName: buildClientName(clientName, 'MCP CLI Proxy', authorizeResource),
     staticOAuthClientMetadata,
     staticOAuthClientInfo,
     authorizeResource,
@@ -177,6 +179,7 @@ parseCommandLineArgs(process.argv.slice(2), 'Usage: npx tsx proxy.ts <https://se
       staticOAuthClientMetadata,
       staticOAuthClientInfo,
       authorizeResource,
+      clientName,
       ignoredTools,
       authTimeoutMs,
       serverUrlHash,
@@ -190,6 +193,7 @@ parseCommandLineArgs(process.argv.slice(2), 'Usage: npx tsx proxy.ts <https://se
         staticOAuthClientMetadata,
         staticOAuthClientInfo,
         authorizeResource,
+        clientName,
         ignoredTools,
         authTimeoutMs,
         serverUrlHash,

@@ -103,6 +103,32 @@ To run multiple instances of the same remote server with different configuration
 
 Each unique combination of server URL, resource, and custom headers will maintain separate OAuth sessions and token storage.
 
+#### Naming Instances
+
+Each instance registers separately with the authorization server, and the name it registers under is what you see on the consent screen and in the server's list of connected apps. By default that name is `MCP CLI Proxy`, which makes multiple instances indistinguishable.
+
+When `--resource` is set, it is appended to the name automatically, so the example above registers as `MCP CLI Proxy (https://tenant1.atlassian.net/)` and `MCP CLI Proxy (https://tenant2.atlassian.net/)`.
+
+To set the label yourself, use `--client-name`. The resource is still appended to it:
+
+```json
+      "args": [
+        "mcp-remote",
+        "https://mcp.atlassian.com/v1/sse",
+        "--resource",
+        "https://tenant1.atlassian.net/",
+        "--client-name",
+        "Jira - Tenant 1"
+      ]
+```
+
+This registers as `Jira - Tenant 1 (https://tenant1.atlassian.net/)`.
+
+Two caveats:
+
+* The name is only sent during dynamic client registration, so an instance that has already authenticated keeps its old name. To re-register, delete both the `<hash>_client_info.json` and `<hash>_tokens.json` files from `~/.mcp-auth/mcp-remote-<version>/` (removing only the client info is not enough — with valid tokens on disk, the auth flow never runs) and authenticate again.
+* `--client-name` has no effect when `--static-oauth-client-info` is used, since that supplies a pre-registered client and skips registration entirely. A `client_name` inside `--static-oauth-client-metadata` also takes precedence.
+
 ### Flags
 
 * If `npx` is producing errors, consider adding `-y` as the first argument to auto-accept the installation of the `mcp-remote` package.

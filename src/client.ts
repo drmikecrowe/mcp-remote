@@ -22,6 +22,7 @@ import {
   connectToRemoteServer,
   TransportStrategy,
   discoverOAuthServerInfo,
+  buildClientName,
 } from './lib/utils'
 import { StaticOAuthClientInformationFull, StaticOAuthClientMetadata } from './lib/types'
 import { createLazyAuthCoordinator } from './lib/coordination'
@@ -37,6 +38,8 @@ async function runClient(
   host: string,
   staticOAuthClientMetadata: StaticOAuthClientMetadata,
   staticOAuthClientInfo: StaticOAuthClientInformationFull,
+  authorizeResource: string,
+  clientName: string,
   authTimeoutMs: number,
   serverUrlHash: string,
 ) {
@@ -67,9 +70,10 @@ async function runClient(
     serverUrl: discoveryResult.authorizationServerUrl,
     callbackPort,
     host,
-    clientName: 'MCP CLI Client',
+    clientName: buildClientName(clientName, 'MCP CLI Client', authorizeResource),
     staticOAuthClientMetadata,
     staticOAuthClientInfo,
+    authorizeResource,
     serverUrlHash,
     authorizationServerMetadata: discoveryResult.authorizationServerMetadata,
     protectedResourceMetadata: discoveryResult.protectedResourceMetadata,
@@ -188,6 +192,8 @@ parseCommandLineArgs(process.argv.slice(2), 'Usage: npx tsx client.ts <https://s
       host,
       staticOAuthClientMetadata,
       staticOAuthClientInfo,
+      authorizeResource,
+      clientName,
       authTimeoutMs,
       serverUrlHash,
     }) => {
@@ -199,6 +205,8 @@ parseCommandLineArgs(process.argv.slice(2), 'Usage: npx tsx client.ts <https://s
         host,
         staticOAuthClientMetadata,
         staticOAuthClientInfo,
+        authorizeResource,
+        clientName,
         authTimeoutMs,
         serverUrlHash,
       )
