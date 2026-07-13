@@ -1,4 +1,5 @@
 import { debugLog } from './utils'
+import { isSafeMetadataUrl } from './url-safety'
 
 /**
  * OAuth 2.0 Protected Resource Metadata as defined in RFC 9728
@@ -128,6 +129,13 @@ export function buildProtectedResourceMetadataUrls(resourceUrl: string): string[
  */
 async function fetchProtectedResourceMetadataFromUrl(metadataUrl: string): Promise<ProtectedResourceMetadata | undefined> {
   debugLog('Fetching Protected Resource Metadata', { metadataUrl })
+
+  // SSRF guard (SEC-9): this URL can come straight from a server-controlled
+  // WWW-Authenticate header. Refuse file:// and cloud-metadata/link-local targets.
+  if (!isSafeMetadataUrl(metadataUrl)) {
+    debugLog('Refusing to fetch unsafe Protected Resource Metadata URL', { metadataUrl })
+    return undefined
+  }
 
   try {
     const response = await fetch(metadataUrl, {
