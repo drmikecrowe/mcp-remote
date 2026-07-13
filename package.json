@@ -1,6 +1,6 @@
 {
-  "name": "mcp-remote",
-  "version": "0.1.38",
+  "name": "@drmikecrowe/mcp-remote",
+  "version": "0.1.38-test.3",
   "description": "Remote proxy for Model Context Protocol, allowing local-only clients to connect to remote servers using oAuth",
   "keywords": [
     "mcp",
@@ -11,8 +11,11 @@
   ],
   "author": "Glen Maddern <glen@glenmaddern.com>",
   "license": "MIT",
-  "repository": "https://github.com/geelen/mcp-remote",
+  "repository": "https://github.com/drmikecrowe/mcp-remote",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist",
     "README.md",
@@ -32,21 +35,21 @@
     "test:unit:watch": "vitest"
   },
   "dependencies": {
-    "express": "^4.21.2",
+    "express": "^4.22.0",
     "open": "^10.1.0",
     "strict-url-sanitise": "0.0.1",
     "undici": "^7.28.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
-    "zod": "^4.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.13.10",
     "prettier": "^3.5.3",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.3",
+    "zod": "^4.0.0"
   },
   "tsup": {
     "entry": [
