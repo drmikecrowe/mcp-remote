@@ -580,6 +580,11 @@ export function setupOAuthCallbackServerWithLongPoll(options: OAuthCallbackServe
 
   // Long-polling endpoint
   app.get('/wait-for-auth', (req, res) => {
+    // Echo the per-instance secret so polling peers can confirm they're talking to the
+    // genuine primary and not a recycled port or a planted lockfile (SEC-5)
+    if (options.authSecret) {
+      res.setHeader('X-MCP-Auth-Secret', options.authSecret)
+    }
     if (authCode) {
       // Auth already completed - just return 200 without the actual code
       // Secondary instances will read tokens from disk
